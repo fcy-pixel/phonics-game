@@ -1,54 +1,6 @@
-import GAME_HTML from './game.html';
-
 const QWEN_BASE = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 
-/**
- * Proxy TTS request to Qwen CosyVoice API.
- * Returns MP3 binary directly to the client.
- */
-async function handleTTS(request, env) {
-  const { text } = await request.json();
-
-  if (!env.QWEN_API_KEY) {
-    return new Response('TTS service not configured', { status: 503 });
-  }
-
-  const upstream = await fetch(`${QWEN_BASE}/audio/speech`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.QWEN_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'cosyvoice-v1',
-      input: text,
-      voice: 'Cherry',       // clear English female voice suitable for children
-      response_format: 'mp3',
-      speed: 0.9,             // slightly slower for young learners
-    }),
-  });
-
-  if (!upstream.ok) {
-    const err = await upstream.text();
-    console.error('Qwen TTS error:', upstream.status, err);
-    return new Response('TTS upstream error', { status: 502 });
-  }
-
-  const audio = await upstream.arrayBuffer();
-  return new Response(audio, {
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'Cache-Control': 'no-store',
-    },
-  });
-}
-
-/**
- * Generate adaptive phonics questions via Qwen chat completions.
- * Accepts { history: [{letter, correct}] } in the request body.
- * Returns a JSON array of question objects.
- */
-async function handleQuestions(request, env) {
+export async function onRequestPost({ request, env }) {
   const { history } = await request.json();
 
   if (!env.QWEN_API_KEY) {
@@ -62,7 +14,7 @@ async function handleQuestions(request, env) {
   if (Array.isArray(history) && history.length > 0) {
     const recent = history.slice(-6);
     const correct = recent.filter((r) => r.correct).map((r) => r.letter).join(', ') || 'none';
-    const wrong = recent.filter((r) => !r.correct).map((r) => r.letter).join(', ') || 'none';
+    const wrong   = recent.filter((r) => !r.correct).map((r) => r.letter).join(', ') || 'none';
     historyText = `Recently correct: ${correct}. Recently wrong: ${wrong}. Focus on reinforcing wrong letters.`;
   }
 
@@ -104,11 +56,11 @@ Each object MUST have these exact keys:
     });
   }
 
-  const data = await upstream.json();
+  const data    = await upstream.json();
   const content = data.choices?.[0]?.message?.content ?? '{}';
 
   try {
-    const parsed = JSON.parse(content);
+    const parsed    = JSON.parse(content);
     const questions = Array.isArray(parsed) ? parsed : (parsed.questions ?? []);
     return new Response(JSON.stringify(questions), {
       headers: { 'Content-Type': 'application/json' },
@@ -120,29 +72,3 @@ Each object MUST have these exact keys:
     });
   }
 }
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const { method, pathname } = { method: request.method, pathname: url.pathname };
-
-    // CORS preflight
-    if (method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
-    }
-
-    if (method === 'POST' && pathname === '/api/tts') return handleTTS(request, env);
-    if (method === 'POST' && pathname === '/api/questions') return handleQuestions(request, env);
-
-    // Serve the game for every other route
-    return new Response(GAME_HTML, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    });
-  },
-};
