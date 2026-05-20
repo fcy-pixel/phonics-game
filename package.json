@@ -1,0 +1,14 @@
+{
+  "name": "phonics-game",
+  "version": "1.0.0",
+  "description": "AI Adaptive Phonics Game for Primary School Students powered by Qwen AI",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secret": "wrangler secret put QWEN_API_KEY"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
